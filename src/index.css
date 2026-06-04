@@ -345,3 +345,74 @@ a {
   background: rgb(255, 0, 0);
   color: #f8f8f8;
 }
+
+@media (max-width: 768px) {
+  .site-header {
+    padding: 12px 16px;
+  }
+  .brand {
+    font-size: 20px;
+  }
+  .main-content {
+    padding: 16px;
+  }
+  .hero {
+    padding: 20px;
+    border-radius: 18px;
+  }
+  .hero-heading {
+    font-size: clamp(28px, 6vw, 42px);
+  }
+  .controls {
+    grid-template-columns: 1fr;
+  }
+  .search-block,
+  .mood-block {
+    flex-direction: column;
+    gap: 8px;
+  }
+  .search-input,
+  .mood-input,
+  .btn-primary,
+  .btn-secondary,
+  .movie-btn {
+    width: 100%;
+    min-width: 0;
+  }
+  .movie-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 12px;
+  }
+  .movie-card {
+    width: 100%;
+    min-width: 0;
+  }
+  .movie-card img {
+    height: 260px;
+  }
+  .heart-btn {
+    width: 36px;
+    height: 36px;
+    top: 8px;
+    right: 8px;
+  }
+}
+
+@media (max-width: 420px) {
+  .brand {
+    font-size: 18px;
+  }
+  .hero-heading {
+    font-size: clamp(22px, 8vw, 34px);
+  }
+  .movie-grid {
+    grid-template-columns: 1fr;
+  }
+  .movie-card img {
+    height: 220px;
+  }
+  .site-header {
+    gap: 8px;
+    padding: 10px 12px;
+  }
+}
