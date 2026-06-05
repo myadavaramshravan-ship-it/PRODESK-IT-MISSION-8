@@ -1,11 +1,10 @@
-﻿import { useEffect, useState, useContext, useCallback, useRef } from "react";
+﻿import { useEffect, useState, useContext, useCallback } from "react";
 import { searchMovies } from "../api/omdb";
 import MovieCard from "../components/MovieCard";
 import SearchBar from "../components/SearchBar";
 import MoodMatcher from "../components/MoodMatcher";
 import { FavoritesContext } from "../context/FavoritesContext";
 import useDebounce from "../hooks/useDebounce";
-import useInfiniteScroll from "../hooks/useInfiniteScroll";
 const TRENDING_TERMS = [
   "matrix",
   "batman",
@@ -44,9 +43,11 @@ export default function Home() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
-  const trendingSeen = useRef(new Set());
-  const trendingTermOrder = useRef(shuffleArray(TRENDING_TERMS));
-  const trendingStartPages = useRef(Array.from({ length: INITIAL_TRENDING_BATCH_SIZE }, getRandomTrendingPage));
+  const [trendingSeen, setTrendingSeen] = useState(new Set());
+  const [trendingTermOrder, setTrendingTermOrder] = useState(shuffleArray(TRENDING_TERMS));
+  const [trendingStartPages, setTrendingStartPages] = useState(
+    Array.from({ length: INITIAL_TRENDING_BATCH_SIZE }, getRandomTrendingPage)
+  );
   const debouncedQuery = useDebounce(query, 500);
 
   const { favorites } = useContext(FavoritesContext);
@@ -58,23 +59,24 @@ export default function Home() {
       setError(null);
 
       const { termIndex, page: termPage } = trendingCursor;
-      if (termIndex >= trendingTermOrder.current.length) return;
+      if (termIndex >= trendingTermOrder.length) return;
 
       const isInitialBatch = !append && termIndex === 0;
       if (isInitialBatch) {
-        const batchTerms = trendingTermOrder.current.slice(0, INITIAL_TRENDING_BATCH_SIZE);
+        const batchTerms = trendingTermOrder.slice(0, INITIAL_TRENDING_BATCH_SIZE);
         const batchResults = [];
+        const seen = new Set(trendingSeen);
 
         for (let i = 0; i < batchTerms.length; i += 1) {
           const term = batchTerms[i];
-          const pageToLoad = trendingStartPages.current[i] || 1;
+          const pageToLoad = trendingStartPages[i] || 1;
           const data = await searchMovies(term, pageToLoad);
           if (data.Response === "True") {
             const list = data.Search || [];
             for (const item of list) {
               if (!item.imdbID) continue;
-              if (trendingSeen.current.has(item.imdbID)) continue;
-              trendingSeen.current.add(item.imdbID);
+              if (seen.has(item.imdbID)) continue;
+              seen.add(item.imdbID);
               batchResults.push(item);
               if (batchResults.length >= MAX_INITIAL_TRENDING_RESULTS) break;
             }
@@ -82,13 +84,14 @@ export default function Home() {
           if (batchResults.length >= MAX_INITIAL_TRENDING_RESULTS) break;
         }
 
+        setTrendingSeen(seen);
         setMovies(shuffleArray(batchResults).slice(0, MAX_INITIAL_TRENDING_RESULTS));
         setTotalResults(TRENDING_TERMS.length * 10);
         setTrendingCursor({ termIndex: batchTerms.length, page: 1 });
         return;
       }
 
-      const term = trendingTermOrder.current[termIndex];
+      const term = trendingTermOrder[termIndex];
       const data = await searchMovies(term, termPage);
       if (data.Response === "False") {
         if (!append) setMovies([]);
@@ -98,13 +101,15 @@ export default function Home() {
       }
 
       const list = data.Search || [];
+      const seen = new Set(trendingSeen);
       const uniq = list.filter((item) => {
         if (!item.imdbID) return false;
-        if (trendingSeen.current.has(item.imdbID)) return false;
-        trendingSeen.current.add(item.imdbID);
+        if (seen.has(item.imdbID)) return false;
+        seen.add(item.imdbID);
         return true;
       });
 
+      setTrendingSeen(seen);
       setMovies((prev) => (append ? [...prev, ...uniq] : uniq));
       setTotalResults(TRENDING_TERMS.length * 10);
 
@@ -119,7 +124,7 @@ export default function Home() {
     } finally {
       setLoading(false);
     }
-  }, [trendingCursor]);
+  }, [trendingCursor, trendingSeen, trendingStartPages, trendingTermOrder]);
 
   
   const fetchMovies = useCallback(async (q, p = 1, append = false) => {
@@ -147,13 +152,12 @@ export default function Home() {
     }
   }, [fetchTrending]);
 
-  const initialLoaded = useRef(false);
+  const [initialLoaded, setInitialLoaded] = useState(false);
 
-  
   useEffect(() => {
-    trendingTermOrder.current = shuffleArray(TRENDING_TERMS);
-    trendingStartPages.current = Array.from({ length: INITIAL_TRENDING_BATCH_SIZE }, getRandomTrendingPage);
-    trendingSeen.current.clear();
+    setTrendingTermOrder(shuffleArray(TRENDING_TERMS));
+    setTrendingStartPages(Array.from({ length: INITIAL_TRENDING_BATCH_SIZE }, getRandomTrendingPage));
+    setTrendingSeen(new Set());
 
     (async () => {
       setPage(1);
@@ -162,31 +166,30 @@ export default function Home() {
       try {
         await fetchMovies("", 1, false);
       } finally {
-        initialLoaded.current = true;
+        setInitialLoaded(true);
       }
     })();
   }, []);
 
-  
   useEffect(() => {
-    if (!initialLoaded.current) return;
+    if (!initialLoaded) return;
     setPage(1);
     if (debouncedQuery && debouncedQuery.trim()) {
       const searchTerm = debouncedQuery.trim();
       setCurrentQuery(searchTerm);
       setTrendingCursor({ termIndex: 0, page: 1 });
-      trendingSeen.current.clear();
+      setTrendingSeen(new Set());
       fetchMovies(searchTerm, 1, false);
     } else {
       setCurrentQuery("");
       setTrendingCursor({ termIndex: 0, page: 1 });
-      trendingSeen.current.clear();
+      setTrendingSeen(new Set());
       fetchMovies("", 1, false);
     }
-  }, [debouncedQuery]);
+  }, [debouncedQuery, initialLoaded]);
 
   const hasMore = currentQuery.trim() ? movies.length < totalResults : trendingCursor.termIndex < TRENDING_TERMS.length;
-  const loadMore = () => {
+  const loadMore = useCallback(() => {
     if (loading || !hasMore) return;
     if (currentQuery.trim()) {
       const next = page + 1;
@@ -195,9 +198,19 @@ export default function Home() {
     } else {
       fetchMovies("", 1, true);
     }
-  };
+  }, [currentQuery, fetchMovies, hasMore, loading, page]);
 
-  const sentinelRef = useInfiniteScroll({ onLoadMore: loadMore, loading, hasMore });
+  useEffect(() => {
+    const onScroll = () => {
+      if (loading || !hasMore) return;
+      if (window.innerHeight + window.scrollY >= document.body.offsetHeight - 200) {
+        loadMore();
+      }
+    };
+
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, [hasMore, loadMore, loading]);
 
   return (
     <div className="page-container">
@@ -217,7 +230,7 @@ export default function Home() {
               setCurrentQuery(searchTerm);
               setPage(1);
               setTrendingCursor({ termIndex: 0, page: 1 });
-              trendingSeen.current.clear();
+              setTrendingSeen(new Set());
               fetchMovies(searchTerm, 1, false);
             }}
           />
@@ -241,7 +254,7 @@ export default function Home() {
                 <MovieCard key={movie.imdbID} movie={movie} />
               ))}
             </div>
-            <div ref={sentinelRef} className="sentinel">
+            <div className="sentinel">
               {loading && <div className="loader" aria-hidden />}
             </div>
           </>
